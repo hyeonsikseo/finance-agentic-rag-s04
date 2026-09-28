@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """회차 확인.
 
-    python scripts/check_session.py 3        →  results/check_s03.json
+    python scripts/check_session.py 4        →  results/check_s04.json
 
 회차 끝에 이걸 돌려서 나온 JSON 을 커밋합니다. 그 파일이 제출물입니다.
 강사는 그 파일들을 모아 표로 보고 빨간 칸만 확인합니다.
@@ -162,7 +162,43 @@ def check_s03() -> dict:
     }
 
 
-CHECKS = {2: check_s02, 3: check_s03}
+def check_s04() -> dict:
+    from finrag.settings import get_settings
+    s = get_settings()
+    base = _json(s.results_dir / "baseline.json") or {}
+    hyb = _json(s.results_dir / "hybrid.json") or {}
+    # 리랭커가 실제로 사 주는 것은 "순서"다. Recall@5 는 이미 baseline 이 높아
+    # 더 오를 자리가 없는 유형이 있다(조항번호형 baseline 100%). 그래서 순위 품질
+    # 지표(MRR·Recall@1)로 판정한다. 통과시키려고 기준을 낮추는 게 아니라,
+    # 애초에 그 지표가 이 단계가 개선하는 지표다.
+    def m(res: dict, t: str, k: str):
+        return res.get("by_type", {}).get(t, {}).get(k) if t else res.get("overall", {}).get(k)
+
+    b_mrr, h_mrr = m(base, "조항번호형", "mrr"), m(hyb, "조항번호형", "mrr")
+    b_all, h_all = m(base, "", "mrr"), m(hyb, "", "mrr")
+    b_r1, h_r1 = m(base, "", "recall@1"), m(hyb, "", "recall@1")
+    # ADR-003 은 4회차 과제다. 템플릿을 복사만 하고 빈칸(______)을 남겨 두면 안 낸 것이다.
+    adr = s.root / "docs" / "adr" / "ADR-003-hybrid-retrieval.md"
+    if not adr.exists():
+        adr_ok = ok(False, "docs/adr/ADR-003-hybrid-retrieval.md 가 없다 (docs/templates/adr.md 를 복사해 채운다)")
+    else:
+        blanks = adr.read_text(encoding="utf-8").count("______")
+        adr_ok = ok(blanks == 0, f"빈칸 {blanks}곳 남음" if blanks else f"{len(adr.read_text(encoding='utf-8')):,}자")
+    return {
+        "hybrid.json 존재": ok(bool(hyb), f"{hyb.get('n', 0)}문항"),
+        "조항번호형 MRR ≥ baseline": ok(b_mrr is not None and h_mrr is not None and h_mrr >= b_mrr,
+                                    f"baseline {b_mrr} → hybrid {h_mrr}"),
+        "전체 MRR ≥ baseline": ok(b_all is not None and h_all is not None and h_all >= b_all,
+                                f"{b_all} → {h_all}"),
+        "전체 Recall@1 ≥ baseline": ok(b_r1 is not None and h_r1 is not None and h_r1 >= b_r1,
+                                     f"{b_r1} → {h_r1}"),
+        "리랭커 지연 기록": ok(any(r.get("latency_ms") for r in hyb.get("rows", [])),
+                        f"평균 {hyb.get('overall', {}).get('latency_ms_avg')}ms"),
+        "ADR-003": adr_ok,
+    }
+
+
+CHECKS = {2: check_s02, 3: check_s03, 4: check_s04}
 
 
 def main() -> int:

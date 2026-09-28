@@ -13,6 +13,7 @@ data/download_report.json
 data/chunks/
 data/ocr_cache/
 data/repair_cache/
+data/bm25_cache/
 
 # 3회차. 크거나 각자 만드는 것
 models/

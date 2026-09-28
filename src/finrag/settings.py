@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # RRF 로 모을 후보 수. 리랭커 입력이 되므로 지연과 메모리를 직접 좌우한다.
     # 16GB 노트북에서 BGE-M3(2.2GB)와 리랭커(2.2GB)를 함께 올리면 여유가 없어서
     # 후보를 50개로 두면 스왑이 터진다(실측). 30개가 타협점이다.
-    rerank_candidates: int = 30
+    rerank_candidates: int = 10
     hf_home: str = "./models"
 
     # ── Qdrant ──
