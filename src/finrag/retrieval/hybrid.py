@@ -63,15 +63,11 @@ def _by_id() -> dict[str, dict]:
 
 
 def rrf(rankings: list[list[str]], k: int = RRF_K) -> dict[str, float]:
-    """순위 목록 여러 개를 하나의 점수표로 합친다. {chunk_id: 점수}. 점수가 클수록 앞이다.
-
-    rankings 의 각 원소는 chunk_id 를 순위 순서로 늘어놓은 목록이다(첫 번째가 1등).
-    """
-    # ── TODO: 여기를 채우세요 ──────────────────────────────
-    # 목록마다 순위 r(1부터)인 문서에 1 / (k + r) 을 더한다. 여러 목록에 나오면 그만큼 더해진다.
-    # 점수는 쓰지 않는다. 순위만 쓴다. 왜 점수를 정규화해 더하지 않는지는 이 파일 맨 위에 있다.
-    # k=60 은 관례값이다. 순위 1과 2의 차이를 얼마나 크게 볼지를 정한다(k 가 작을수록 1등이 압도한다).
-    raise NotImplementedError("TODO: rrf 를 구현하세요")
+    fused: dict[str, float] = {}
+    for ranking in rankings:
+        for rank, cid in enumerate(ranking, start=1):
+            fused[cid] = fused.get(cid, 0.0) + 1.0 / (k + rank)
+    return fused
 
 
 def _hydrate(chunk_id: str, score: float) -> dict:
@@ -92,15 +88,19 @@ def _hydrate(chunk_id: str, score: float) -> dict:
 def search(query: str, k: int = 10, *, candidates: int = 50,
            flt: models.Filter | None = None, collection: str | None = None,
            use_bm25: bool = True) -> list[dict]:
-    """Dense 와 BM25 를 RRF 로 합쳐 상위 k 개를 돌려준다. 원소는 _hydrate() 가 만드는 dict 다.
-
-    candidates: 두 검색에서 각각 몇 개를 후보로 받을지. flt: Qdrant 필터(발행사·문서 종류 등).
-    use_bm25=False 면 Dense 순위만으로 같은 모양을 돌려준다(비교 실험용).
-    """
     dense_hits = dense.search(query, k=candidates, flt=flt, collection=collection)
-    # ── TODO: 여기를 채우세요 ──────────────────────────────
-    # Dense 후보(dense_hits 의 chunk_id 순서)와 BM25 후보(_bm25().search(query, k=candidates, tokenizer=tokenize)
-    # 가 돌려주는 (chunk_id, 점수) 목록)의 순위를 rrf 로 합쳐, 점수 내림차순 상위 k 개를 _hydrate(chunk_id, 점수) 로 돌려준다.
-    # 생각할 것 하나: flt 가 있을 때 BM25 결과를 그대로 써도 되는가. BM25 인덱스는 Qdrant 밖에 있어 필터를 모른다.
-    #   dense_hits 의 원소에는 "doc_id" 가 있고, _by_id()[chunk_id]["doc_id"] 로 BM25 청크의 문서를 알 수 있다.
-    raise NotImplementedError("TODO: search 의 합치기를 구현하세요")
+    rankings = [[h["chunk_id"] for h in dense_hits]]
+
+    if use_bm25:
+        bm = _bm25().search(query, k=candidates, tokenizer=tokenize)
+        allowed = None
+        if flt is not None:
+            # BM25 는 Qdrant 밖이라 필터를 모른다. Dense 가 필터로 좁힌 문서 집합으로 제한한다.
+            allowed = {h["doc_id"] for h in dense_hits}
+        ids = [cid for cid, _ in bm
+               if allowed is None or _by_id().get(cid, {}).get("doc_id") in allowed]
+        rankings.append(ids)
+
+    fused = rrf(rankings)
+    order = sorted(fused.items(), key=lambda x: -x[1])[:k]
+    return [_hydrate(cid, sc) for cid, sc in order]

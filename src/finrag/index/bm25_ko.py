@@ -52,17 +52,18 @@ def normalize_articles(text: str) -> str:
 
 
 def tokenize(text: str, *, expand: bool = False) -> list[str]:
-    """글을 BM25 토큰 목록으로 만든다. 문서를 인덱싱할 때와 질의를 검색할 때 둘 다 이 함수를 쓴다.
-
-    expand=True 는 질의에만 쓴다. 별칭 사전(ALIASES)의 낱말을 더해 "자기부담금"으로 물어도
-    "공제금액"이라고 적힌 조항이 걸리게 한다. 문서 쪽은 확장하지 않는다.
-    """
-    # ── TODO: 여기를 채우세요 ──────────────────────────────
-    # 요구사항은 tests/test_hybrid.py 의 tokenize 테스트 6개가 정한다. 재료는 이 파일 위에 다 있다.
-    #   normalize_articles · ARTICLE_TOKEN · NUMERIC · _kiwi() (사용자 사전) · KEEP_TAGS · expand_query_terms
-    # Kiwi 토큰은 .form(글자)과 .tag(품사)를 갖는다. 어떤 재료를 어떤 순서로 쓸지는 직접 정한다.
-    # 순서가 틀리면 어느 테스트가 빨개지는지가 힌트다. expand 는 질의에만 쓴다(문서 쪽은 확장하지 않는다).
-    raise NotImplementedError("TODO: tokenize 를 구현하세요")
+    text = normalize_articles(text)
+    tokens: list[str] = re.findall(r"제\d+조(?:의\d+)?", text)
+    tokens += NUMERIC.findall(text)
+    for tok in _kiwi().tokenize(text):
+        if tok.tag in KEEP_TAGS and len(tok.form) > 1:
+            tokens.append(tok.form)
+        elif tok.tag in ("SN", "SL") and tok.form:
+            tokens.append(tok.form)
+    if expand:
+        for extra in expand_query_terms(text):
+            tokens += tokenize(extra)
+    return tokens
 
 
 def whitespace_tokenize(text: str) -> list[str]:
